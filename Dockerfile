@@ -11,5 +11,6 @@ ENV NODE_ENV=development
 ENV API_PORT=4100
 
 EXPOSE 4100
+EXPOSE 5173
 
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+CMD ["npm", "run", "dev"]
