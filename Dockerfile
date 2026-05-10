@@ -13,4 +13,4 @@ ENV API_PORT=4100
 EXPOSE 4100
 EXPOSE 5173
 
-CMD ["npm", "run", "dev"]
+CMD ["sh", "-c", "npm run dev:web & npm run dev:api"]
