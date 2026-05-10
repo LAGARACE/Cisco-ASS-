@@ -7,4 +7,5 @@ services:
       MOCK_DATA: "false"
     ports:
       - "4100:4100"
+      - "5173:5173"
     restart: unless-stopped
