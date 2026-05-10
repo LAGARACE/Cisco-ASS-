@@ -2,8 +2,6 @@ services:
   dashboard:
     build: .
     container_name: mist-telemetry-dashboard
-    env_file:
-      - .env
     environment:
       API_PORT: 4100
       MOCK_DATA: "false"
