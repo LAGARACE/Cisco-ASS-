@@ -276,6 +276,19 @@ textarea {
   padding: 1rem;
 }
 
+.sensor-icon {
+  display: inline-flex;
+  width: 2.25rem;
+  min-width: 2.25rem;
+  height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d8e1ef;
+  border-radius: 0.7rem;
+  background: #ffffff;
+  color: #0066cc;
+}
+
 .telemetry-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));

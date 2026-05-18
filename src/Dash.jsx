@@ -1,5 +1,9 @@
 import {
   AlertTriangle,
+  DoorClosed,
+  DoorOpen,
+  Lightbulb,
+  Ruler,
   LogOut,
   Maximize2,
   Minimize2,
@@ -48,6 +52,59 @@ const statusLabel = {
   warning: "Review",
   critical: "Action",
 };
+
+function getPiSensorDisplay(sensor) {
+  const sensorId = String(sensor.sensorId ?? "").toLowerCase();
+  const numericValue = Number(sensor.value ?? 0);
+
+  if (sensorId === "distance") {
+    return {
+      Icon: Ruler,
+      title: "Distance",
+      label: "Distance",
+      value: `${numericValue.toFixed(1)} cm`,
+      chip: null,
+    };
+  }
+
+  if (sensorId === "door_1") {
+    const isOpen = numericValue === 1;
+
+    return {
+      Icon: isOpen ? DoorOpen : DoorClosed,
+      title: "Door 1",
+      label: "Door 1",
+      value: isOpen ? "Open" : "Closed",
+      chip: {
+        color: isOpen ? "success" : "danger",
+        label: isOpen ? "Open" : "Closed",
+      },
+    };
+  }
+
+  if (sensorId === "light") {
+    const isOn = numericValue === 1;
+
+    return {
+      Icon: Lightbulb,
+      title: "Light",
+      label: "Light",
+      value: isOn ? "On" : "Off",
+      chip: {
+        color: isOn ? "success" : "danger",
+        label: isOn ? "On" : "Off",
+      },
+    };
+  }
+
+  return {
+    Icon: Ruler,
+    title: sensor.label,
+    label: sensor.label,
+    value: sensor.value,
+    chip: null,
+  };
+}
 
 const baseWidgetTitles = {
   timeline: "Client And Environment Trend",
@@ -1049,34 +1106,51 @@ function Dash({ onLogout, user }) {
                       </ResponsiveContainer>
                     </div>
                     <div className="telemetry-grid">
-                      {data.piSensors.map((sensor) => (
-                        <div key={sensor.id} className="metric-tile">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-sm font-medium text-slate-950">
-                              {sensor.label}
-                            </p>
-                            <Chip
-                              size="sm"
-                              color={statusTone[sensor.status]}
-                              variant="soft"
-                            >
-                              {statusLabel[sensor.status]}
-                            </Chip>
+                      {data.piSensors.map((sensor) => {
+                        const display = getPiSensorDisplay(sensor);
+                        const SensorIcon = display.Icon;
+
+                        return (
+                          <div key={sensor.id} className="metric-tile">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex min-w-0 items-center gap-3">
+                                <span className="sensor-icon">
+                                  <SensorIcon size={18} />
+                                </span>
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium text-slate-950">
+                                    {display.title}
+                                  </p>
+                                  <p className="truncate text-xs text-slate-500">
+                                    {sensor.collectorId}
+                                  </p>
+                                </div>
+                              </div>
+                              {display.chip ? (
+                                <Chip
+                                  size="sm"
+                                  color={display.chip.color}
+                                  variant="soft"
+                                >
+                                  {display.chip.label}
+                                </Chip>
+                              ) : (
+                                <Chip
+                                  size="sm"
+                                  color={statusTone[sensor.status]}
+                                  variant="soft"
+                                >
+                                  {statusLabel[sensor.status]}
+                                </Chip>
+                              )}
+                            </div>
+                            <div className="telemetry-pair">
+                              <span>{display.label}</span>
+                              <strong>{display.value}</strong>
+                            </div>
                           </div>
-                          <div className="telemetry-pair">
-                            <span>sensor_id</span>
-                            <strong>{sensor.sensorId}</strong>
-                          </div>
-                          <div className="telemetry-pair">
-                            <span>device_id</span>
-                            <strong>{sensor.collectorId}</strong>
-                          </div>
-                          <div className="telemetry-pair">
-                            <span>value</span>
-                            <strong>{sensor.value}</strong>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </Card.Content>
                 </WidgetCard>
