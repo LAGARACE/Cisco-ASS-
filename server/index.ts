@@ -42,6 +42,7 @@ app.get("/api/sample-devices", (_request, response) => {
       "humidity",
       "pressure",
       "num_clients",
+      "ble_nearby_count",
       "radio_24_util",
       "radio_5_util",
       "uptime",
@@ -63,6 +64,11 @@ app.get("/api/sample-devices", (_request, response) => {
       "iot_di1_digital",
       "iot_di2_digital"
     ],
+    piTelemetry: {
+      measurement: "pi_telemetry",
+      tags: ["device_id", "sensor_id"],
+      fields: ["value"]
+    },
     devices: getSampleJuniperIotApDevices()
   });
 });

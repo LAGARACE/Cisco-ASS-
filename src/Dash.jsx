@@ -57,6 +57,7 @@ const baseWidgetTitles = {
   clientSplit: "Radio Client Split",
   rf: "RF Channel And Noise",
   environment: "Environment Sensors",
+  piTelemetry: "Pi Telemetry",
   motionPower: "Motion And Power",
   ioPins: "Juniper IO Pins",
   devices: "Devices",
@@ -182,7 +183,17 @@ function Dash({ onLogout, user }) {
       data?.accessPoints.map((ap) => ({
         name: ap.room.replace(" AP", ""),
         num_clients: ap.num_clients,
+        ble_nearby_count: ap.ble_nearby_count,
         ambient_temp: ap.ambient_temp,
+      })) ?? [],
+    [data],
+  );
+
+  const piSensorChart = useMemo(
+    () =>
+      data?.piSensors.map((sensor) => ({
+        name: sensor.label,
+        value: sensor.value,
       })) ?? [],
     [data],
   );
@@ -237,6 +248,7 @@ function Dash({ onLogout, user }) {
 
     return [
       { metric: "Clients", value: Math.min(100, average("num_clients")) },
+      { metric: "Occupancy", value: Math.min(100, average("ble_nearby_count")) },
       { metric: "Temp", value: Math.max(0, 100 - average("ambient_temp") * 2) },
       {
         metric: "Humidity",
@@ -324,8 +336,8 @@ function Dash({ onLogout, user }) {
                 Welcome Back {username}
               </h1>
               <p className="truncate text-sm text-slate-500">
-                Monitoring assets, AP telemetry with client, radio, sensor, and
-                power signals
+                Monitoring assets, AP telemetry with client, radio, sensor,
+                BLE occupancy, Pi telemetry, and power signals
               </p>
             </div>
           </div>
@@ -454,8 +466,8 @@ function Dash({ onLogout, user }) {
                         Client And Environment Trend
                       </Card.Title>
                       <p className="text-sm text-slate-500">
-                        Sample hourly values for num_clients, ambient_temp, and
-                        humidity
+                        Sample hourly values for num_clients,
+                        ble_nearby_count, ambient_temp, and humidity
                       </p>
                     </div>
                   </Card.Header>
@@ -547,6 +559,14 @@ function Dash({ onLogout, user }) {
                           />
                           <Line
                             type="monotone"
+                            dataKey="ble_nearby_count"
+                            name="BLE occupancy"
+                            stroke="#17C964"
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                          <Line
+                            type="monotone"
                             dataKey="ambient_temp"
                             name="ambient_temp C"
                             stroke="#9353D3"
@@ -578,7 +598,7 @@ function Dash({ onLogout, user }) {
                         Device Client Load
                       </Card.Title>
                       <p className="text-sm text-slate-500">
-                        Connected IoT clients by AP
+                        Connected IoT clients and nearby BLE occupancy by AP
                       </p>
                     </div>
                   </Card.Header>
@@ -636,7 +656,14 @@ function Dash({ onLogout, user }) {
                             name="num_clients"
                             fill="url(#barGradient)"
                             radius={[10, 10, 4, 4]}
-                            barSize={38}
+                            barSize={28}
+                          />
+                          <Bar
+                            dataKey="ble_nearby_count"
+                            name="ble_nearby_count"
+                            fill="#17C964"
+                            radius={[10, 10, 4, 4]}
+                            barSize={28}
                           />
                         </BarChart>
                       </ResponsiveContainer>
@@ -955,6 +982,99 @@ function Dash({ onLogout, user }) {
                             <span>pressure</span>
                             <strong>{ap.pressure}</strong>
                           </div>
+                          <div className="telemetry-pair">
+                            <span>ble_nearby_count</span>
+                            <strong>{ap.ble_nearby_count}</strong>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </Card.Content>
+                </WidgetCard>
+              </section>
+
+              <section className="grid grid-cols-1 gap-3 xl:grid-cols-[1fr_1fr]">
+                <WidgetCard
+                  id="piTelemetry"
+                  title={baseWidgetTitles.piTelemetry}
+                  {...widgetControls}
+                >
+                  <Card.Header>
+                    <div>
+                      <Card.Title className="text-base">
+                        Pi Telemetry
+                      </Card.Title>
+                      <p className="text-sm text-slate-500">
+                        Latest value field from pi_telemetry by sensor_id
+                      </p>
+                    </div>
+                  </Card.Header>
+                  <Card.Content className="gap-4">
+                    <div className="modern-chart-panel h-56">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={piSensorChart}
+                          margin={{ top: 14, left: -8, right: 12, bottom: 4 }}
+                        >
+                          <CartesianGrid
+                            vertical={false}
+                            stroke="#d8e1ef"
+                            strokeOpacity={0.7}
+                          />
+                          <XAxis
+                            dataKey="name"
+                            axisLine={false}
+                            tickLine={false}
+                            tick={{ fill: "#7c8ba1", fontSize: 12 }}
+                            dy={8}
+                          />
+                          <YAxis
+                            axisLine={false}
+                            tickLine={false}
+                            tick={{ fill: "#7c8ba1", fontSize: 12 }}
+                            width={42}
+                          />
+                          <Tooltip
+                            content={<ChartTooltip />}
+                            cursor={{ fill: "rgba(23, 201, 100, 0.08)" }}
+                          />
+                          <Bar
+                            dataKey="value"
+                            name="value"
+                            fill="#17C964"
+                            radius={[8, 8, 3, 3]}
+                            barSize={34}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="telemetry-grid">
+                      {data.piSensors.map((sensor) => (
+                        <div key={sensor.id} className="metric-tile">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-medium text-slate-950">
+                              {sensor.label}
+                            </p>
+                            <Chip
+                              size="sm"
+                              color={statusTone[sensor.status]}
+                              variant="soft"
+                            >
+                              {statusLabel[sensor.status]}
+                            </Chip>
+                          </div>
+                          <div className="telemetry-pair">
+                            <span>sensor_id</span>
+                            <strong>{sensor.sensorId}</strong>
+                          </div>
+                          <div className="telemetry-pair">
+                            <span>device_id</span>
+                            <strong>{sensor.collectorId}</strong>
+                          </div>
+                          <div className="telemetry-pair">
+                            <span>value</span>
+                            <strong>{sensor.value}</strong>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1154,6 +1274,7 @@ function Dash({ onLogout, user }) {
                             <Table.Column isRowHeader>DEVICE</Table.Column>
                             <Table.Column>SITE</Table.Column>
                             <Table.Column>CLIENTS</Table.Column>
+                            <Table.Column>OCCUPANCY</Table.Column>
                             <Table.Column>ENV</Table.Column>
                             <Table.Column>STATUS</Table.Column>
                           </Table.Header>
@@ -1172,6 +1293,7 @@ function Dash({ onLogout, user }) {
                                 </Table.Cell>
                                 <Table.Cell>{ap.building}</Table.Cell>
                                 <Table.Cell>{ap.num_clients}</Table.Cell>
+                                <Table.Cell>{ap.ble_nearby_count}</Table.Cell>
                                 <Table.Cell>
                                   {ap.ambient_temp} C / {ap.humidity}%
                                 </Table.Cell>
@@ -1305,14 +1427,19 @@ function Dash({ onLogout, user }) {
                         Schema Coverage
                       </Card.Title>
                       <p className="text-sm text-slate-500">
-                        Fields used from mist_telemetry
+                        Fields used from mist_telemetry and pi_telemetry
                       </p>
                     </div>
                   </Card.Header>
                   <Card.Content className="gap-4">
                     {[
                       ["ambient_temp", "cpu_temp", "humidity", "pressure"],
-                      ["num_clients", "radio_24_clients", "radio_5_clients"],
+                      [
+                        "num_clients",
+                        "ble_nearby_count",
+                        "radio_24_clients",
+                        "radio_5_clients",
+                      ],
                       [
                         "radio_24_util",
                         "radio_5_util",
@@ -1335,6 +1462,7 @@ function Dash({ onLogout, user }) {
                         "iot_a4_analog",
                       ],
                       ["iot_di1_digital", "iot_di2_digital"],
+                      ["pi_telemetry", "sensor_id", "value"],
                     ].map((group) => (
                       <div key={group.join("-")} className="field-chip-row">
                         {group.map((field) => (
@@ -1372,23 +1500,26 @@ function Dash({ onLogout, user }) {
                       </div>
                       <div>
                         <div className="mb-2 flex items-center justify-between text-sm">
-                          <span className="text-slate-500">Client load</span>
+                          <span className="text-slate-500">Room occupancy</span>
                           <span className="font-medium text-slate-950">
-                            {ap.num_clients}
+                            {ap.ble_nearby_count}
                           </span>
                         </div>
                         <ProgressBar
-                          aria-label={`${ap.room} client load`}
-                          value={Math.min(ap.num_clients, 100)}
+                          aria-label={`${ap.room} room occupancy`}
+                          value={Math.min(ap.ble_nearby_count, 100)}
                           color={
                             ap.status === "critical" ? "danger" : "success"
                           }
                           size="sm"
                         >
                           <Label className="sr-only">
-                            {ap.room} client load
+                            {ap.room} room occupancy
                           </Label>
                         </ProgressBar>
+                        <p className="mt-2 text-xs text-slate-500">
+                          {ap.num_clients} connected clients
+                        </p>
                       </div>
                     </Card.Content>
                   </WidgetCard>

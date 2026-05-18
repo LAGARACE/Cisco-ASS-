@@ -11,6 +11,7 @@ export type MetricCard = {
 export type TimePoint = {
   time: string;
   num_clients: number;
+  ble_nearby_count: number;
   ambient_temp: number;
   humidity: number;
 };
@@ -24,6 +25,7 @@ export type AccessPoint = {
   cpu_temp: number;
   pressure: number;
   num_clients: number;
+  ble_nearby_count: number;
   ambient_temp: number;
   humidity: number;
   radio_24_util: number;
@@ -49,6 +51,15 @@ export type AccessPoint = {
   status: Status;
 };
 
+export type PiSensor = {
+  id: string;
+  collectorId: string;
+  sensorId: string;
+  label: string;
+  value: number;
+  status: Status;
+};
+
 export type CollectorMetric = {
   label: string;
   value: string;
@@ -69,6 +80,7 @@ export type DashboardData = {
   overview: MetricCard[];
   timeline: TimePoint[];
   accessPoints: AccessPoint[];
+  piSensors: PiSensor[];
   collector: {
     host: string;
     protocol: string;

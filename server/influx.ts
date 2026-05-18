@@ -4,6 +4,7 @@ import type {
   CollectorMetric,
   DashboardData,
   Insight,
+  PiSensor,
   Status,
   TimePoint
 } from "./types";
@@ -16,6 +17,7 @@ type InfluxConfig = {
   bucket: string;
   mockData: boolean;
   measurement: string;
+  piMeasurement: string;
 };
 
 type JuniperIotApTelemetryRecord = {
@@ -29,6 +31,7 @@ type JuniperIotApTelemetryRecord = {
   humidity?: number;
   pressure?: number;
   numClients?: number;
+  bleNearbyCount?: number;
   radio24Util?: number;
   radio5Util?: number;
   uptime?: number;
@@ -51,6 +54,13 @@ type JuniperIotApTelemetryRecord = {
   iotDi2Digital?: number;
 };
 
+type PiTelemetryRecord = {
+  time: string;
+  collectorId: string;
+  sensorId: string;
+  value?: number;
+};
+
 function getInfluxConfig(): InfluxConfig {
   return {
     url: process.env.INFLUX_URL ?? "http://localhost:8086",
@@ -58,7 +68,8 @@ function getInfluxConfig(): InfluxConfig {
     org: process.env.INFLUX_ORG ?? "",
     bucket: process.env.INFLUX_BUCKET ?? "",
     mockData: process.env.MOCK_DATA !== "false",
-    measurement: process.env.INFLUX_MEASUREMENT ?? "mist_telemetry"
+    measurement: process.env.INFLUX_MEASUREMENT ?? "mist_telemetry",
+    piMeasurement: process.env.INFLUX_PI_MEASUREMENT ?? "pi_telemetry"
   };
 }
 
@@ -78,25 +89,28 @@ export async function getDashboardData(): Promise<DashboardData> {
 }
 
 async function queryJuniperIotApDashboard(config: InfluxConfig): Promise<DashboardData> {
-  const [timeline, latest] = await Promise.all([
+  const [timeline, latest, piLatest] = await Promise.all([
     queryRoomTimeline(config),
-    queryLatestDeviceTelemetry(config)
+    queryLatestDeviceTelemetry(config),
+    queryLatestPiTelemetry(config)
   ]);
 
-  if (timeline.length === 0 && latest.length === 0) {
+  if (timeline.length === 0 && latest.length === 0 && piLatest.length === 0) {
     return createMockDashboard();
   }
 
   const accessPoints = createAccessPoints(latest);
-  const overview = createOverview(accessPoints, latest);
+  const piSensors = createPiSensors(piLatest);
+  const overview = createOverview(accessPoints, latest, piSensors);
   const collectorMetrics = createCollectorMetrics(latest);
-  const insights = createInsights(accessPoints, latest);
+  const insights = createInsights(accessPoints, latest, piSensors);
 
   return {
     generatedAt: new Date().toISOString(),
     overview,
     timeline: timeline.length > 0 ? timeline : createTimelineFromLatest(latest),
     accessPoints,
+    piSensors,
     collector: {
       host: new URL(config.url).host,
       protocol: "Juniper IoT AP telemetry",
@@ -105,9 +119,16 @@ async function queryJuniperIotApDashboard(config: InfluxConfig): Promise<Dashboa
         {
           id: "collector-live",
           service: "InfluxDB feed",
-          message: `${latest.length} AP device streams read from ${config.bucket}/${config.measurement}`,
+          message: `${latest.length} AP streams and ${piLatest.length} Pi sensor streams read from ${config.bucket}`,
           startedAt: "Live",
-          severity: latest.length > 0 ? "healthy" : "warning"
+          severity: latest.length > 0 || piLatest.length > 0 ? "healthy" : "warning"
+        },
+        {
+          id: "collector-pi",
+          service: "Pi telemetry",
+          message: `${piSensors.length} latest sensor values from ${config.piMeasurement}`,
+          startedAt: "Latest sample",
+          severity: piSensors.length > 0 ? "healthy" : "warning"
         },
         {
           id: "collector-power",
@@ -128,7 +149,7 @@ async function queryRoomTimeline(config: InfluxConfig): Promise<TimePoint[]> {
 from(bucket: "${config.bucket}")
   |> range(start: -12h)
   |> filter(fn: (r) => r._measurement == "${config.measurement}")
-  |> filter(fn: (r) => r._field == "num_clients" or r._field == "ambient_temp" or r._field == "humidity")
+  |> filter(fn: (r) => r._field == "num_clients" or r._field == "ble_nearby_count" or r._field == "ambient_temp" or r._field == "humidity")
   |> aggregateWindow(every: 1h, fn: mean, createEmpty: false)
   |> yield(name: "hourly")
 `;
@@ -144,12 +165,17 @@ from(bucket: "${config.bucket}")
         const point = byTime.get(time) ?? {
           time,
           num_clients: 0,
+          ble_nearby_count: 0,
           ambient_temp: 0,
           humidity: 0
         };
 
         if (record._field === "num_clients") {
           point.num_clients = Math.round(Number(record._value));
+        }
+
+        if (record._field === "ble_nearby_count") {
+          point.ble_nearby_count = Math.round(Number(record._value));
         }
 
         if (record._field === "ambient_temp") {
@@ -182,6 +208,7 @@ from(bucket: "${config.bucket}")
     r._field == "humidity" or
     r._field == "pressure" or
     r._field == "num_clients" or
+    r._field == "ble_nearby_count" or
     r._field == "radio_24_util" or
     r._field == "radio_5_util" or
     r._field == "uptime" or
@@ -225,6 +252,7 @@ from(bucket: "${config.bucket}")
           humidity: toNumber(record.humidity),
           pressure: toNumber(record.pressure),
           numClients: toNumber(record.num_clients),
+          bleNearbyCount: toNumber(record.ble_nearby_count),
           radio24Util: toNumber(record.radio_24_util),
           radio5Util: toNumber(record.radio_5_util),
           uptime: toNumber(record.uptime),
@@ -252,7 +280,39 @@ from(bucket: "${config.bucket}")
     });
   });
 
-  return records.sort((a, b) => (b.numClients ?? 0) - (a.numClients ?? 0));
+  return records.sort((a, b) => (b.bleNearbyCount ?? b.numClients ?? 0) - (a.bleNearbyCount ?? a.numClients ?? 0));
+}
+
+async function queryLatestPiTelemetry(config: InfluxConfig): Promise<PiTelemetryRecord[]> {
+  const queryApi = new InfluxDB({ url: config.url, token: config.token }).getQueryApi(config.org);
+  const flux = `
+from(bucket: "${config.bucket}")
+  |> range(start: -24h)
+  |> filter(fn: (r) => r._measurement == "${config.piMeasurement}")
+  |> filter(fn: (r) => r._field == "value")
+  |> group(columns: ["device_id", "sensor_id", "_field"])
+  |> last()
+`;
+
+  const records: PiTelemetryRecord[] = [];
+
+  await new Promise<void>((resolve, reject) => {
+    queryApi.queryRows(flux, {
+      next(row, tableMeta) {
+        const record = tableMeta.toObject(row);
+        records.push({
+          time: String(record._time ?? new Date().toISOString()),
+          collectorId: String(record.device_id ?? "unknown-pi-collector"),
+          sensorId: String(record.sensor_id ?? "unknown-sensor"),
+          value: toNumber(record._value)
+        });
+      },
+      error: reject,
+      complete: resolve
+    });
+  });
+
+  return records.sort((a, b) => a.sensorId.localeCompare(b.sensorId));
 }
 
 function createAccessPoints(records: JuniperIotApTelemetryRecord[]): AccessPoint[] {
@@ -269,6 +329,7 @@ function createAccessPoints(records: JuniperIotApTelemetryRecord[]): AccessPoint
       cpu_temp: round1(record.cpuTemp),
       pressure: round1(record.pressure),
       num_clients: clients,
+      ble_nearby_count: Math.round(record.bleNearbyCount ?? 0),
       ambient_temp: round1(record.ambientTemp),
       humidity: round1(record.humidity),
       radio_24_util: round1(record.radio24Util),
@@ -296,10 +357,30 @@ function createAccessPoints(records: JuniperIotApTelemetryRecord[]): AccessPoint
   });
 }
 
-function createOverview(accessPoints: AccessPoint[], records: JuniperIotApTelemetryRecord[]) {
+function createPiSensors(records: PiTelemetryRecord[]): PiSensor[] {
+  return records.map((record) => {
+    const value = round1(record.value);
+
+    return {
+      id: `${record.collectorId}-${record.sensorId}`,
+      collectorId: record.collectorId,
+      sensorId: record.sensorId,
+      label: formatSensorLabel(record.sensorId),
+      value,
+      status: getPiSensorStatus(record.sensorId, value)
+    };
+  });
+}
+
+function createOverview(
+  accessPoints: AccessPoint[],
+  records: JuniperIotApTelemetryRecord[],
+  piSensors: PiSensor[]
+) {
   const avgTemp = average(records.map((record) => record.ambientTemp));
   const avgHumidity = average(records.map((record) => record.humidity));
   const totalClients = sum(records.map((record) => record.numClients));
+  const totalOccupancy = sum(records.map((record) => record.bleNearbyCount));
   const constrained = records.filter((record) => record.powerConstrained).length;
 
   return [
@@ -309,6 +390,13 @@ function createOverview(accessPoints: AccessPoint[], records: JuniperIotApTeleme
       detail: "Devices reporting telemetry",
       trend: `${accessPoints.length} shown`,
       status: records.length > 0 ? "healthy" : "critical"
+    },
+    {
+      label: "Room Occupancy",
+      value: String(totalOccupancy),
+      detail: "Latest ble_nearby_count total",
+      trend: `${accessPoints.filter((ap) => ap.ble_nearby_count > 0).length} rooms active`,
+      status: totalOccupancy > 0 ? "healthy" : "warning"
     },
     {
       label: "Connected Clients",
@@ -323,6 +411,13 @@ function createOverview(accessPoints: AccessPoint[], records: JuniperIotApTeleme
       detail: "From ambient_temp field",
       trend: `${avgHumidity.toFixed(1)}% RH`,
       status: avgTemp >= 28 ? "warning" : "healthy"
+    },
+    {
+      label: "Pi Sensors",
+      value: String(piSensors.length),
+      detail: "Latest pi_telemetry values",
+      trend: `${piSensors.filter((sensor) => sensor.status !== "healthy").length} to review`,
+      status: piSensors.length > 0 ? "healthy" : "warning"
     },
     {
       label: "Power Constrained",
@@ -368,14 +463,34 @@ function createCollectorMetrics(records: JuniperIotApTelemetryRecord[]): Collect
   ];
 }
 
-function createInsights(accessPoints: AccessPoint[], records: JuniperIotApTelemetryRecord[]): Insight[] {
+function createInsights(
+  accessPoints: AccessPoint[],
+  records: JuniperIotApTelemetryRecord[],
+  piSensors: PiSensor[]
+): Insight[] {
   const hotDevices = records.filter((record) => (record.cpuTemp ?? 0) >= 80);
   const constrained = records.filter((record) => record.powerConstrained);
   const busyRadios = records.filter(
     (record) => Math.max(record.radio24Util ?? 0, record.radio5Util ?? 0) >= 80
   );
+  const occupiedRooms = accessPoints.filter((ap) => ap.ble_nearby_count > 0);
+  const piAlerts = piSensors.filter((sensor) => sensor.status !== "healthy");
 
   const insights: Insight[] = [
+    ...occupiedRooms.slice(0, 2).map((ap) => ({
+      id: `occupancy-${ap.id}`,
+      service: ap.name,
+      message: `Room occupancy is ${ap.ble_nearby_count} nearby BLE clients from ble_nearby_count.`,
+      startedAt: "latest sample",
+      severity: "healthy" as Status
+    })),
+    ...piAlerts.slice(0, 2).map((sensor) => ({
+      id: `pi-${sensor.id}`,
+      service: sensor.label,
+      message: `${sensor.sensorId} is reporting ${sensor.value}; review the Pi telemetry sensor.`,
+      startedAt: "latest sample",
+      severity: sensor.status
+    })),
     ...hotDevices.slice(0, 2).map((record) => ({
       id: `cpu-${record.deviceId}`,
       service: record.name,
@@ -415,6 +530,7 @@ function createInsights(accessPoints: AccessPoint[], records: JuniperIotApTeleme
 function createTimelineFromLatest(records: JuniperIotApTelemetryRecord[]): TimePoint[] {
   const now = new Date();
   const clients = sum(records.map((record) => record.numClients));
+  const occupancy = sum(records.map((record) => record.bleNearbyCount));
   const temp = average(records.map((record) => record.ambientTemp));
   const humidity = average(records.map((record) => record.humidity));
 
@@ -422,10 +538,30 @@ function createTimelineFromLatest(records: JuniperIotApTelemetryRecord[]): TimeP
     {
       time: now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
       num_clients: clients,
+      ble_nearby_count: occupancy,
       ambient_temp: round1(temp),
       humidity: round1(humidity)
     }
   ];
+}
+
+function getPiSensorStatus(sensorId: string, value: number): Status {
+  if (sensorId.toLowerCase().includes("door")) {
+    return value > 0 ? "warning" : "healthy";
+  }
+
+  if (sensorId.toLowerCase().includes("distance")) {
+    return value > 0 && value < 50 ? "warning" : "healthy";
+  }
+
+  return "healthy";
+}
+
+function formatSensorLabel(sensorId: string): string {
+  return sensorId
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function getDeviceStatus(record: JuniperIotApTelemetryRecord, radioUtil: number): Status {

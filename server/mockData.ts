@@ -13,6 +13,7 @@ type JuniperIotApSampleDevice = {
     humidity: number;
     pressure: number;
     num_clients: number;
+    ble_nearby_count: number;
     radio_24_util: number;
     radio_5_util: number;
     uptime: number;
@@ -50,6 +51,7 @@ const sampleDevices: JuniperIotApSampleDevice[] = [
       humidity: 45.2,
       pressure: 1012.8,
       num_clients: 46,
+      ble_nearby_count: 18,
       radio_24_util: 24,
       radio_5_util: 41,
       uptime: 1296840,
@@ -74,9 +76,34 @@ const sampleDevices: JuniperIotApSampleDevice[] = [
   }
 ];
 
+const samplePiSensors = [
+  {
+    collectorId: "pi-collector-01",
+    sensorId: "distance",
+    label: "Distance",
+    value: 126,
+    status: "healthy" as Status
+  },
+  {
+    collectorId: "pi-collector-01",
+    sensorId: "door_1",
+    label: "Door 1",
+    value: 0,
+    status: "healthy" as Status
+  },
+  {
+    collectorId: "pi-collector-01",
+    sensorId: "light",
+    label: "Light",
+    value: 72,
+    status: "healthy" as Status
+  }
+];
+
 export function createMockDashboard(): DashboardData {
   const now = new Date();
   const totalClients = sum(sampleDevices.map((device) => device.fields.num_clients));
+  const totalOccupancy = sum(sampleDevices.map((device) => device.fields.ble_nearby_count));
   const avgAmbientTemp = average(sampleDevices.map((device) => device.fields.ambient_temp));
   const avgHumidity = average(sampleDevices.map((device) => device.fields.humidity));
   const constrainedCount = sampleDevices.filter((device) => device.fields.power_constrained).length;
@@ -89,6 +116,7 @@ export function createMockDashboard(): DashboardData {
     return {
       time: hour.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
       num_clients: Math.round(totalClients * activityCurve),
+      ble_nearby_count: Math.round(totalOccupancy * activityCurve),
       ambient_temp: Number((avgAmbientTemp + Math.sin(index / 2.3) * 0.8).toFixed(1)),
       humidity: Number((avgHumidity + Math.cos(index / 2.5) * 2.4).toFixed(1))
     };
@@ -105,6 +133,13 @@ export function createMockDashboard(): DashboardData {
         status: "healthy"
       },
       {
+        label: "Room Occupancy",
+        value: String(totalOccupancy),
+        detail: "Sum of ble_nearby_count",
+        trend: `${sampleDevices.filter((device) => device.fields.ble_nearby_count > 0).length} rooms active`,
+        status: "healthy"
+      },
+      {
         label: "Connected Clients",
         value: String(totalClients),
         detail: "Sum of num_clients",
@@ -117,6 +152,13 @@ export function createMockDashboard(): DashboardData {
         detail: "Mean ambient_temp",
         trend: `${avgHumidity.toFixed(1)}% RH`,
         status: "warning"
+      },
+      {
+        label: "Pi Sensors",
+        value: String(samplePiSensors.length),
+        detail: "Latest pi_telemetry values",
+        trend: `${samplePiSensors.filter((sensor) => sensor.status !== "healthy").length} to review`,
+        status: "healthy"
       },
       {
         label: "Power Constrained",
@@ -136,6 +178,7 @@ export function createMockDashboard(): DashboardData {
       cpu_temp: device.fields.cpu_temp,
       pressure: device.fields.pressure,
       num_clients: device.fields.num_clients,
+      ble_nearby_count: device.fields.ble_nearby_count,
       ambient_temp: device.fields.ambient_temp,
       humidity: device.fields.humidity,
       radio_24_util: device.fields.radio_24_util,
@@ -159,6 +202,14 @@ export function createMockDashboard(): DashboardData {
       iot_di1_digital: device.fields.iot_di1_digital,
       iot_di2_digital: device.fields.iot_di2_digital,
       status: getDeviceStatus(device)
+    })),
+    piSensors: samplePiSensors.map((sensor) => ({
+      id: `${sensor.collectorId}-${sensor.sensorId}`,
+      collectorId: sensor.collectorId,
+      sensorId: sensor.sensorId,
+      label: sensor.label,
+      value: sensor.value,
+      status: sensor.status
     })),
     collector: {
       host: "juniper-iot-ap-collector",
@@ -200,13 +251,20 @@ export function createMockDashboard(): DashboardData {
         {
           id: "collector-fields",
           service: "Juniper IoT AP fields",
-          message: "Using AP telemetry plus Juniper IO pins: iot_a1_analog, iot_a2_analog, iot_a3_analog, iot_a4_analog, iot_di1_digital, and iot_di2_digital",
+          message: "Using AP telemetry, ble_nearby_count room occupancy, Juniper IO pins, and pi_telemetry sensor values",
           startedAt: "Sample data",
           severity: "warning"
         }
       ]
     },
     insights: [
+      {
+        id: "ins-DMUAPJNP01-occupancy",
+        service: "DMUAPJNP01",
+        message: "Room occupancy is 18 nearby BLE clients from ble_nearby_count.",
+        startedAt: "latest sample",
+        severity: "healthy"
+      },
       {
         id: "ins-DMUAPJNP01-stable",
         service: "DMUAPJNP01",
