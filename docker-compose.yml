@@ -1,8 +1,10 @@
 services:
-  dashboard:
+  buas-dashboard:
     build: .
-    container_name: mist-telemetry-dashboard
+    image: buas-dashboard:latest
+    container_name: buas-dashboard
     environment:
+      NODE_ENV: production
       API_PORT: 4100
       MOCK_DATA: "false"
       INFLUX_URL: "http://mist-influxdb:8086"
@@ -11,5 +13,4 @@ services:
       INFLUX_TOKEN: "9264575a0ad4002c2fe897dad66ed6250ea00ce125d9fe6a9e2d57574640dc80"
     ports:
       - "4100:4100"
-      - "5173:5173"
     restart: unless-stopped

@@ -475,7 +475,7 @@ function average(values: Array<number | undefined>): number {
 
 function sum(values: Array<number | undefined>): number {
   return Math.round(
-    values.reduce((total, value) => total + (Number.isFinite(value) ? Number(value) : 0), 0)
+    values.reduce<number>((total, value) => total + (Number.isFinite(value) ? Number(value) : 0), 0)
   );
 }
 
