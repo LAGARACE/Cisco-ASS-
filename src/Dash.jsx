@@ -83,16 +83,16 @@ function getPiSensorDisplay(sensor) {
   }
 
   if (sensorId === "light") {
-    const isOn = numericValue === 1;
+    const isLight = numericValue === 1;
 
     return {
       Icon: Lightbulb,
       title: "Light",
       label: "Light",
-      value: isOn ? "On" : "Off",
+      value: isLight ? "Light" : "Dark",
       chip: {
-        color: isOn ? "success" : "danger",
-        label: isOn ? "On" : "Off",
+        color: isLight ? "success" : "danger",
+        label: isLight ? "Light" : "Dark",
       },
     };
   }
