@@ -7,7 +7,7 @@ services:
       NODE_ENV: production
       API_PORT: 4100
       MOCK_DATA: "false"
-      INFLUX_URL: "http://mist-influxdb:8086"
+      INFLUX_URL: "http://10.10.1.210:8086"
       INFLUX_ORG: "mist"
       INFLUX_BUCKET: "mist_telemetry"
       INFLUX_TOKEN: "9264575a0ad4002c2fe897dad66ed6250ea00ce125d9fe6a9e2d57574640dc80"
