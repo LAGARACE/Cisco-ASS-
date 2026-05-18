@@ -54,7 +54,7 @@ const statusLabel = {
 };
 
 function getPiSensorDisplay(sensor) {
-  const sensorId = String(sensor.sensorId ?? "").toLowerCase();
+  const sensorId = String(sensor.sensorId ?? "").trim().toLowerCase();
   const numericValue = Number(sensor.value ?? 0);
 
   if (sensorId === "distance") {

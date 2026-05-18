@@ -95,7 +95,7 @@ const samplePiSensors = [
     collectorId: "pi-collector-01",
     sensorId: "light",
     label: "Light",
-    value: 72,
+    value: 0,
     status: "healthy" as Status
   }
 ];
